@@ -51,11 +51,10 @@
                               :ID  (clojure.string/replace acs-uri #"[:/]" "_") ,
                               :entityID  app-name}
         [:md:SPSSODescriptor
-         (if sign-request? {:AuthnRequestsSigned "true",
-                            :WantAssertionsSigned "true",
-                            :protocolSupportEnumeration "urn:oasis:names:tc:SAML:2.0:protocol"}
-             {:WantAssertionsSigned "true",
-              :protocolSupportEnumeration "urn:oasis:names:tc:SAML:2.0:protocol"})
+         (cond-> {:AuthnRequestsSigned "true",
+                  :WantAssertionsSigned "true",
+                  :protocolSupportEnumeration "urn:oasis:names:tc:SAML:2.0:protocol"}
+                 (not sign-request?) (dissoc :AuthnRequestsSigned))
          [:md:KeyDescriptor  {:use  "signing"}
           [:ds:KeyInfo  {:xmlns:ds  "http://www.w3.org/2000/09/xmldsig#"}
            [:ds:X509Data
