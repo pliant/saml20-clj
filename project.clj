@@ -1,4 +1,4 @@
-(defproject kirasystems/saml20-clj "0.1.10"
+(defproject kirasystems/saml20-clj "0.1.11-SNAPSHOT"
   :description "Basic SAML 2.0 library for SSO."
   :url "https://github.com/k2n/saml20-clj"
   :license {:name "Eclipse Public License"
@@ -19,4 +19,16 @@
                    :dependencies [[org.clojure/tools.namespace "0.2.10"]
                                   [org.clojure/tools.nrepl "0.2.3"]
                                   [hiccup "1.0.5"]
-                                  [http-kit "2.1.18"]]}})
+                                  [http-kit "2.1.18"]]}
+  :repositories [["releases" {:url "https://clojars.org/repo"
+                              :sign-releases false
+                              :username :env
+                              :password :env}]]
+  :release-tasks [["vcs" "assert-committed"]
+                  ["change" "version" "leiningen.release/bump-version" "release"]
+                  ["vcs" "commit"]
+                  ["vcs" "tag" "--no-sign"]
+                  ["change" "version" "leiningen.release/bump-version"]
+                  ["vcs" "commit"]
+                  ["vcs" "push"]]
+             })

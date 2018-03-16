@@ -42,31 +42,36 @@
     (dosync
       (ref-set saml-id-timeouts (into {} (filter-fn @saml-id-timeouts))))))
 
-(defn metadata [app-name acs-uri certificate-str]
-  (str
-    (hiccup.page/xml-declaration "UTF-8")
-    (hiccup/html
-      [:md:EntityDescriptor {:xmlns:md  "urn:oasis:names:tc:SAML:2.0:metadata",
-                             :ID  (clojure.string/replace acs-uri #"[:/]" "_") ,
-                             :entityID  app-name}
-       [:md:SPSSODescriptor {:AuthnRequestsSigned "true",
-                             :WantAssertionsSigned "true",
-                             :protocolSupportEnumeration "urn:oasis:names:tc:SAML:2.0:protocol"} 
-        [:md:KeyDescriptor  {:use  "signing"} 
-         [:ds:KeyInfo  {:xmlns:ds  "http://www.w3.org/2000/09/xmldsig#"} 
-          [:ds:X509Data 
-           [:ds:X509Certificate certificate-str]]]]
-        [:md:KeyDescriptor  {:use  "encryption"} 
-         [:ds:KeyInfo  {:xmlns:ds  "http://www.w3.org/2000/09/xmldsig#"} 
-          [:ds:X509Data 
-           [:ds:X509Certificate certificate-str]]]]
-        [:md:SingleLogoutService  {:Binding  "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST", :Location  "https://example.org/saml/SingleLogout"}] 
-        [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"] 
-        [:md:NameIDFormat  "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"] 
-        [:md:NameIDFormat  "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"] 
-        [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"] 
-        [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"] 
-        [:md:AssertionConsumerService  {:Binding  "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST", :Location acs-uri, :index  "0", :isDefault  "true"}]]])))
+(defn metadata
+  ([app-name acs-uri certificate-str sign-request?]
+   (str
+     (hiccup.page/xml-declaration "UTF-8")
+     (hiccup/html
+       [:md:EntityDescriptor {:xmlns:md  "urn:oasis:names:tc:SAML:2.0:metadata",
+                              :ID  (clojure.string/replace acs-uri #"[:/]" "_") ,
+                              :entityID  app-name}
+        [:md:SPSSODescriptor
+         (cond-> {:AuthnRequestsSigned "true",
+                  :WantAssertionsSigned "true",
+                  :protocolSupportEnumeration "urn:oasis:names:tc:SAML:2.0:protocol"}
+                 (not sign-request?) (dissoc :AuthnRequestsSigned))
+         [:md:KeyDescriptor  {:use  "signing"}
+          [:ds:KeyInfo  {:xmlns:ds  "http://www.w3.org/2000/09/xmldsig#"}
+           [:ds:X509Data
+            [:ds:X509Certificate certificate-str]]]]
+         [:md:KeyDescriptor  {:use  "encryption"}
+          [:ds:KeyInfo  {:xmlns:ds  "http://www.w3.org/2000/09/xmldsig#"}
+           [:ds:X509Data
+            [:ds:X509Certificate certificate-str]]]]
+         [:md:SingleLogoutService  {:Binding  "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST", :Location  "https://example.org/saml/SingleLogout"}]
+         [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:emailAddress"]
+         [:md:NameIDFormat  "urn:oasis:names:tc:SAML:2.0:nameid-format:transient"]
+         [:md:NameIDFormat  "urn:oasis:names:tc:SAML:2.0:nameid-format:persistent"]
+         [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:unspecified"]
+         [:md:NameIDFormat  "urn:oasis:names:tc:SAML:1.1:nameid-format:X509SubjectName"]
+         [:md:AssertionConsumerService  {:Binding  "urn:oasis:names:tc:SAML:2.0:bindings:HTTP-POST", :Location acs-uri, :index  "0", :isDefault  "true"}]]])))
+  ([app-name acs-uri certificate-str]
+   (metadata app-name acs-uri certificate-str true)))
 
 (defn create-request
   "Return XML elements that represent a SAML 2.0 auth request."
