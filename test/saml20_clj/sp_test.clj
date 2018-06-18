@@ -1,7 +1,9 @@
 (ns saml20-clj.sp-test
   (:require [clojure.test :refer :all]
             [clj-time.core :as ctime]
-            [saml20-clj.sp :refer :all]))
+            [saml20-clj.sp :refer :all]
+            [saml20-clj.xml :refer :all])
+  (:import  [org.xml.sax SAXParseException]))
 
 (deftest test-saml-next-id
   (testing "Changing saml last id state."
@@ -28,3 +30,6 @@
       (is (= (get @mutable 1) nil))
       (is (not= (get @mutable 2) nil)))))
 
+(deftest test-load-large-file
+  (testing "Throws exception when loading large file"
+    (is (thrown? SAXParseException (str->xmldoc (slurp "test-resources/xml-bomb.txt"))))))
