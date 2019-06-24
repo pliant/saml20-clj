@@ -19,7 +19,7 @@
                    :dependencies [[org.clojure/tools.namespace "0.2.10"]
                                   [org.clojure/tools.nrepl "0.2.3"]
                                   [hiccup "1.0.5"]
-                                  [http-kit "2.1.18"]]}}
+                                  [http-kit "2.3.0"]]}}
   :repositories [["releases" {:url "https://clojars.org/repo"
                               :sign-releases false
                               :username :env
