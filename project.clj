@@ -5,7 +5,7 @@
             :url "http://www.eclipse.org/legal/epl-v10.html"}
   :source-paths ["src"]
   :dependencies [[clj-time "0.11.0"]
-                 [compojure "1.5.0"]
+                 [compojure "1.5.0" :exclusions [ring/ring-core]] ;ring/ring-core is part of [ring] below
                  [org.apache.santuario/xmlsec "2.0.4"]
                  [org.clojure/clojure "1.8.0"]
                  [org.clojure/data.codec "0.1.0"]
