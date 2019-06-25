@@ -1,4 +1,4 @@
-(defproject kirasystems/saml20-clj "0.1.13-SNAPSHOT"
+(defproject kirasystems/saml20-clj "0.1.13"
   :description "Basic SAML 2.0 library for SSO."
   :url "https://github.com/k2n/saml20-clj"
   :license {:name "Eclipse Public License"
