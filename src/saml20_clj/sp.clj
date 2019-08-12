@@ -131,7 +131,7 @@
   [idp-url saml-request relay-state]
   (redirect
     (str idp-url
-         "?"
+         (if (re-seq #"\?" idp-url) "&" "?")
          (let [saml-request (shared/str->deflate->base64 saml-request)]
            (shared/uri-query-str
              {:SAMLRequest saml-request :RelayState relay-state})))))
