@@ -25,8 +25,8 @@
                                   [http-kit "2.3.0"]]}}
   :repositories [["releases" {:url "https://clojars.org/repo"
                               :sign-releases false
-                              :username :env
-                              :password :env}]]
+                              :username :env/clojars_username
+                              :password :env/clojars_password}]]
   :release-tasks [["vcs" "assert-committed"]
                   ["change" "version" "leiningen.release/bump-version" "release"]
                   ["vcs" "commit"]
