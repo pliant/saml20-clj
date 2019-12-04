@@ -30,10 +30,6 @@
     (.setFeature doc "http://xml.org/sax/features/external-general-entities" false)
     (.setFeature doc "http://xml.org/sax/features/external-parameter-entities" false)
     (.setFeature doc "http://apache.org/xml/features/nonvalidating/load-external-dtd" false)
-    (.setAttribute doc "http://www.oracle.com/xml/jaxp/properties/entityExpansionLimit" "2000")
-    (.setAttribute doc "http://www.oracle.com/xml/jaxp/properties/totalEntitySizeLimit" "100000")
-    (.setAttribute doc "http://www.oracle.com/xml/jaxp/properties/maxParameterEntitySizeLimit" "10000")
-    (.setAttribute doc "http://www.oracle.com/xml/jaxp/properties/maxElementDepth" "100")
     (.setExpandEntityReferences doc false)
     (.newDocumentBuilder doc)))
 
