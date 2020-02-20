@@ -191,7 +191,9 @@
 
 (defn get-certificate-b64 [keystore-filename keystore-password cert-alias]
   (when-let [ks (load-key-store keystore-filename keystore-password)]
-    (-> ks (.getCertificate cert-alias) (.getEncoded) b64/encode (String. "UTF-8"))))
+    (let [certificate (.getCertificate ^java.security.KeyStore ks ^String cert-alias)
+          encoded     (.getEncoded ^java.security.cert.Certificate certificate)]
+      (-> encoded b64/encode (String. "UTF-8")))))
 
 
 ;; https://www.purdue.edu/apps/account/docs/Shibboleth/Shibboleth_information.jsp

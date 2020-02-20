@@ -190,9 +190,9 @@
     (Init/init)
     (ElementProxy/setDefaultPrefix Constants/SignatureSpecNS "")
     (let [ks (shared/load-key-store keystore-filename keystore-password)
-          private-key (.getKey ks key-alias (.toCharArray keystore-password))
-          cert (.getCertificate ks key-alias)
-          sig-algo (case (.getAlgorithm private-key)
+          private-key (.getKey ^java.security.KeyStore ks key-alias (.toCharArray keystore-password))
+          cert (.getCertificate ^java.security.KeyStore ks key-alias)
+          sig-algo (case (.getAlgorithm ^java.security.Key private-key)
                      "DSA" (case algorithm
                              :sha256 org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_DSA_SHA256
                              org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_DSA)
