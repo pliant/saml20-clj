@@ -1,5 +1,5 @@
 (ns saml20-clj.shared-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest testing is]]
             [saml20-clj.shared :as shared]))
 
 (def arb-str "Th1s 15 50m3 s7r1ng w17h 13773r5 and numb3rs!")
@@ -17,10 +17,10 @@
                   nil])
 
 (deftest test-str-to-stream-to-str
-  (testing "Testing string to stream and stream to string transformations.")
-  (is (= (shared/read-to-end (shared/str->inputstream arb-str)) arb-str)))
+  (testing "Testing string to stream and stream to string transformations."
+    (is (= (shared/read-to-end (shared/str->inputstream arb-str)) arb-str))))
 
 (deftest test-parse-xml-str
   (testing "Testing xml parsing from a string."
-  (let [parsed (shared/parse-xml-str arb-xml)]
-    (is (= parsed arb-xml-rep)))))
+   (let [parsed (shared/parse-xml-str arb-xml)]
+     (is (= parsed arb-xml-rep)))))

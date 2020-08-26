@@ -26,7 +26,7 @@
 
 (defn debug-page [saml-info]
   (let [attrs (-> saml-info :assertions first :attrs)
-        status (dissoc saml-info :assertions) ]
+        status (dissoc saml-info :assertions)]
     (template-page "SAML Debug page"
                    [:h2 "SAML response"]
                    [:table.table.table-striped
@@ -35,7 +35,7 @@
                    [:h2 "You 've been authenticated as"]
                    [:table.table.table-striped
                     (map (fn [[k v]]
-                           [:tr [:td k] [:td v]]) attrs) ])))
+                           [:tr [:td k] [:td v]]) attrs)])))
 
 (defroutes main-routes
   (GET "/" {session :session}
@@ -67,4 +67,4 @@
        app (routes saml-routes
                    #'main-routes)]
    (println "Starting server at" base-uri)
-   (run-jetty (handler/site app) {:port port})) )
+   (run-jetty (handler/site app) {:port port})))

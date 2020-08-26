@@ -1,9 +1,11 @@
 (ns saml20-clj.sp-test
-  (:require [clojure.test :refer :all]
+  (:require [clojure.test :refer [deftest testing is]]
             [clj-time.core :as ctime]
-            [saml20-clj.sp :refer :all]
-            [saml20-clj.xml :refer :all])
+            [saml20-clj.sp :refer [next-saml-id!
+                                   bump-saml-id-timeout!
+                                   prune-timed-out-ids!]])
   (:import  [org.xml.sax SAXParseException]))
+
 
 (deftest test-saml-next-id
   (testing "Changing saml last id state."
@@ -20,6 +22,7 @@
       (bump-saml-id-timeout! mutable saml-id time-now)
       (is (= (get @mutable saml-id) time-now)))))
 
+
 (deftest test-prune-timed-out-ids
   (testing "Attempt to remove a stale record from a mutable hash."
     (let [mutable (ref {1 (ctime/date-time 2013 10 10)
@@ -29,7 +32,3 @@
       (is (= (count @mutable) 1))
       (is (= (get @mutable 1) nil))
       (is (not= (get @mutable 2) nil)))))
-
-(deftest test-load-large-file
-  (testing "Throws exception when loading large file"
-    (is (thrown? SAXParseException (str->xmldoc (slurp "test-resources/xml-bomb.txt"))))))

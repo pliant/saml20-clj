@@ -1,23 +1,32 @@
 (ns saml20-clj.sp
-  (:require [clojure.data.xml :as xml]
-            [clojure.xml :refer [parse]]
+  (:require [clojure.xml :refer [parse]]
+            [clojure.zip :as zip]
             [ring.util.response :refer [redirect]]
             [clj-time.core :as ctime]
             [clj-time.coerce :refer [to-timestamp]]
             [hiccup.core :as hiccup]
+            [hiccup.page :as page]
             [saml20-clj.shared :as shared]
             [saml20-clj.xml :as saml-xml]
             [clojure.data.zip.xml :as zf])
-  (:import [javax.xml.crypto.dsig XMLSignature XMLSignatureFactory]
+  (:import [java.security KeyStore]
            [org.apache.xml.security Init]
-           [org.apache.xml.security.utils Constants ElementProxy]
+           [org.apache.xml.security.signature XMLSignature]
            [org.apache.xml.security.transforms Transforms]
+           [org.apache.xml.security.utils Constants
+                                          ElementProxy]
            [org.apache.xml.security.c14n Canonicalizer]
-           [javax.xml.crypto.dsig.dom DOMValidateContext]
-           [javax.xml.parsers DocumentBuilderFactory]
-           [org.w3c.dom Document]
-           [org.w3c.dom NodeList])
+           [org.opensaml Configuration
+                         DefaultBootstrap]
+           [org.opensaml.saml2.core StatusCode]
+           [org.opensaml.saml2.encryption Decrypter]
+           [org.opensaml.xml.encryption InlineEncryptedKeyResolver]
+           [org.opensaml.xml.security.keyinfo StaticKeyInfoCredentialResolver]
+           [org.opensaml.xml.security.x509 BasicX509Credential]
+           [org.opensaml.xml.signature SignatureValidator]
+           [org.opensaml.xml.validation ValidationException])
   (:gen-class))
+
 
 ;;; These next 3 fns are defaults for storing SAML state in memory.
 (defn bump-saml-id-timeout!
@@ -26,10 +35,12 @@
   [saml-id-timeouts saml-id issue-instant]
   (dosync (alter saml-id-timeouts assoc saml-id issue-instant)))
 
+
 (defn next-saml-id!
   "Returns the next available saml id."
   [saml-last-id]
   (swap! saml-last-id inc))
+
 
 (defn prune-timed-out-ids!
   "Given a timeout duration, remove all SAML IDs that are older than now minus the timeout."
@@ -39,10 +50,11 @@
     (dosync
       (ref-set saml-id-timeouts (into {} (filter-fn @saml-id-timeouts))))))
 
+
 (defn metadata
   ([app-name acs-uri certificate-str sign-request?]
    (str
-     (hiccup.page/xml-declaration "UTF-8")
+     (page/xml-declaration "UTF-8")
      (hiccup/html
        [:md:EntityDescriptor {:xmlns:md  "urn:oasis:names:tc:SAML:2.0:metadata",
                               :ID  (clojure.string/replace acs-uri #"[:/]" "_") ,
@@ -70,11 +82,12 @@
   ([app-name acs-uri certificate-str]
    (metadata app-name acs-uri certificate-str true)))
 
+
 (defn create-request
   "Return XML elements that represent a SAML 2.0 auth request."
   [time-issued saml-format saml-service-name saml-id acs-url idp-uri]
   (str
-    (hiccup.page/xml-declaration "UTF-8")
+    (page/xml-declaration "UTF-8")
     (hiccup/html
       [:samlp:AuthnRequest
        {:xmlns:samlp "urn:oasis:names:tc:SAML:2.0:protocol"
@@ -88,16 +101,16 @@
         :AssertionConsumerServiceURL acs-url}
        [:saml:Issuer
         {:xmlns:saml "urn:oasis:names:tc:SAML:2.0:assertion"}
-        saml-service-name]
+        saml-service-name]])))
        ;;[:samlp:NameIDPolicy {:AllowCreate false :Format saml-format}]
-       
-       ])))
+
 
 (defn generate-mutables
   []
   {:saml-id-timeouts (ref {})
    :saml-last-id (atom 0)
    :secret-key-spec (shared/new-secret-key-spec)})
+
 
 (defn create-request-factory
   "Creates new requests for a particular service, format, and acs-url."
@@ -110,12 +123,12 @@
   ([next-saml-id-fn! bump-saml-id-timeout-fn! xml-signer idp-uri saml-format saml-service-name acs-url]
    ;;; Bootstrap opensaml when we create a request factory.
    ;;; TODO: Figure out if this can be called more than once.
-   (org.opensaml.DefaultBootstrap/bootstrap)
+   (DefaultBootstrap/bootstrap)
    (fn request-factory []
      (let [current-time (ctime/now)
            new-saml-id (next-saml-id-fn!)
            issue-instant (shared/make-issue-instant current-time)
-           new-request (create-request issue-instant 
+           new-request (create-request issue-instant
                                        saml-format
                                        saml-service-name
                                        new-saml-id
@@ -125,6 +138,7 @@
        (if xml-signer
          (xml-signer new-request)
          new-request)))))
+
 
 (defn get-idp-redirect
   "Return Ring response for HTTP 302 redirect."
@@ -136,9 +150,11 @@
            (shared/uri-query-str
              {:SAMLRequest saml-request :RelayState relay-state})))))
 
+
 (defn pull-attrs
   [loc attrs]
   (zipmap attrs (map (partial zf/attr loc) attrs)))
+
 
 (defn response->map
   "Parses and performs final validation of the request. An exception will be thrown if validation fails."
@@ -175,12 +191,13 @@
        :user-format user-type
        :user-identifier user-identifier})))
 
+
 (defn parse-saml-response
   "Does everything from parsing the verifying saml data to returning it in an easy to use map."
   [raw-response]
   ;;(println "Got response:\n" raw-response)
   (let [xml (parse (shared/str->inputstream raw-response))
-        parsed-zipper (clojure.zip/xml-zip xml)]
+        parsed-zipper (zip/xml-zip xml)]
     (response->map parsed-zipper)))
 
 
@@ -190,15 +207,15 @@
     (Init/init)
     (ElementProxy/setDefaultPrefix Constants/SignatureSpecNS "")
     (let [ks (shared/load-key-store keystore-filename keystore-password)
-          private-key (.getKey ^java.security.KeyStore ks key-alias (.toCharArray keystore-password))
-          cert (.getCertificate ^java.security.KeyStore ks key-alias)
+          private-key (.getKey ^KeyStore ks key-alias (.toCharArray keystore-password))
+          cert (.getCertificate ^KeyStore ks key-alias)
           sig-algo (case (.getAlgorithm ^java.security.Key private-key)
                      "DSA" (case algorithm
-                             :sha256 org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_DSA_SHA256
-                             org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_DSA)
+                             :sha256 XMLSignature/ALGO_ID_SIGNATURE_DSA_SHA256
+                             XMLSignature/ALGO_ID_SIGNATURE_DSA)
                      (case algorithm
-                       :sha256 org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_RSA_SHA256
-                       org.apache.xml.security.signature.XMLSignature/ALGO_ID_SIGNATURE_RSA))]
+                       :sha256 XMLSignature/ALGO_ID_SIGNATURE_RSA_SHA256
+                       XMLSignature/ALGO_ID_SIGNATURE_RSA))]
       ;; https://svn.apache.org/repos/asf/santuario/xml-security-java/trunk/samples/org/apache/xml/security/samples/signature/CreateSignature.java
       ;; http://stackoverflow.com/questions/2052251/is-there-an-easier-way-to-sign-an-xml-document-in-java
       ;; Also useful: http://www.di-mgt.com.au/xmldsig2.html
@@ -207,8 +224,7 @@
               transforms (doto (new Transforms xmldoc)
                            (.addTransform Transforms/TRANSFORM_ENVELOPED_SIGNATURE)
                            (.addTransform Transforms/TRANSFORM_C14N_EXCL_OMIT_COMMENTS))
-              sig (new org.apache.xml.security.signature.XMLSignature xmldoc nil sig-algo 
-                       Canonicalizer/ALGO_ID_C14N_EXCL_OMIT_COMMENTS)
+              sig (XMLSignature. xmldoc nil sig-algo Canonicalizer/ALGO_ID_C14N_EXCL_OMIT_COMMENTS)
               canonicalizer (Canonicalizer/getInstance Canonicalizer/ALGO_ID_C14N_EXCL_OMIT_COMMENTS)]
           (.. xmldoc
               (getDocumentElement)
@@ -220,17 +236,18 @@
             (.sign private-key))
           (String. (.canonicalizeSubtree canonicalizer xmldoc) "UTF-8"))))))
 
+
 (defn make-saml-decrypter [keystore-filename keystore-password key-alias]
   (when keystore-filename
     (let [ks (shared/load-key-store keystore-filename keystore-password)
           private-key (.getKey ks key-alias (.toCharArray keystore-password))
-          decryption-cred (doto (new org.opensaml.xml.security.x509.BasicX509Credential) 
+          decryption-cred (doto (BasicX509Credential.)
                             (.setPrivateKey private-key))
-          decrypter (new org.opensaml.saml2.encryption.Decrypter
-                         nil
-                         (new org.opensaml.xml.security.keyinfo.StaticKeyInfoCredentialResolver decryption-cred)
-                         (new org.opensaml.xml.encryption.InlineEncryptedKeyResolver))]
+          decrypter (Decrypter. nil
+                                (StaticKeyInfoCredentialResolver. decryption-cred)
+                                (InlineEncryptedKeyResolver.))]
       decrypter)))
+
 
 ;; http://kevnls.blogspot.gr/2009/07/processing-saml-in-java-using-opensaml.html
 ;; http://stackoverflow.com/questions/9422545/decrypting-encrypted-assertion-using-saml-2-0-in-java-using-opensaml
@@ -262,23 +279,24 @@
       :not-on-or-after (to-timestamp (.getNotOnOrAfter subject-confirmation-data))
       :recipient (.getRecipient subject-confirmation-data)}}))
 
+
 (defn validate-saml-response-signature
   "Checks (if exists) the signature of SAML Response given the IdP certificate"
   [saml-resp idp-cert]
   (if-let [signature (.getSignature saml-resp)]
     (let [idp-pubkey (-> idp-cert shared/certificate-x509 shared/jcert->public-key)
-          public-creds (doto (new org.opensaml.xml.security.x509.BasicX509Credential)
+          public-creds (doto (BasicX509Credential.)
                          (.setPublicKey idp-pubkey))
-          validator (new org.opensaml.xml.signature.SignatureValidator public-creds)]
+          validator (SignatureValidator. public-creds)]
       (try
         (.validate validator signature)
         true
-        (catch org.opensaml.xml.validation.ValidationException ex
+        (catch ValidationException ex
           (println "Signature NOT valid")
           (println (.getMessage ex))
           false)))
-    true ;; if not signature is present
-    ))
+    true)) ;; if not signature is present
+
 
 (defn parse-saml-resp-status
   "Parses and returns information about the status (i.e. successful or not), the version, addressing info etc. of the SAML response
@@ -288,19 +306,21 @@
   (let [status (.. saml-resp getStatus getStatusCode getValue)]
     {:inResponseTo (.getInResponseTo saml-resp)
      :status status
-     :success? (= status org.opensaml.saml2.core.StatusCode/SUCCESS_URI) 
+     :success? (= status StatusCode/SUCCESS_URI)
      :version (.. saml-resp getVersion toString)
      :issueInstant (to-timestamp (.getIssueInstant saml-resp))
      :destination (.getDestination saml-resp)}))
+
 
 (defn xml-string->saml-resp
   "Parses a SAML response (XML string) from IdP and returns the corresponding (Open)SAML Response object"
   [xml-string]
   (let [xmldoc (.getDocumentElement (saml-xml/str->xmldoc xml-string))
-        unmarshallerFactory (org.opensaml.Configuration/getUnmarshallerFactory)
+        unmarshallerFactory (Configuration/getUnmarshallerFactory)
         unmarshaller (.getUnmarshaller unmarshallerFactory xmldoc)
         saml-resp (.unmarshall unmarshaller xmldoc)]
     saml-resp))
+
 
 (defn saml-resp->assertions
   "Returns the assertions (encrypted or not) of a SAML Response object"
@@ -311,4 +331,4 @@
                                 (.getEncryptedAssertions saml-resp))))
         props (map parse-saml-assertion assertions)]
     (assoc (parse-saml-resp-status saml-resp)
-           :assertions props )))
+           :assertions props)))

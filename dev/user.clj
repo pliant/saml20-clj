@@ -32,9 +32,7 @@
   (reset! app-state (new-saml-instance conf-path)))
 
 (comment
-  
+
   (reset-state! "config.edn")
   (start-ring!)
-  (stop-ring!)
-
-  )
+  (stop-ring!))

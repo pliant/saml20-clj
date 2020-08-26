@@ -1,5 +1,5 @@
 (ns web
-  (:require 
+  (:require
     [org.httpkit.server :refer [run-server]]
     [ring.middleware.params :refer [wrap-params]]
     [ring.middleware.keyword-params :refer [wrap-keyword-params]]
@@ -15,11 +15,11 @@
 
 (defn basic-page [content]
   (html5
-  [:html
-   [:head
-    [:title "Blank page"]]
-   [:body
-    [:pre content]]]))
+   [:html
+    [:head
+     [:title "Blank page"]]
+    [:body
+     [:pre content]]]))
 
 (defn wrap-app-state
   [config]
@@ -42,4 +42,3 @@
   [state]
   ((:http-server state))
   (dissoc state :http-server :handler))
-
