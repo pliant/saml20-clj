@@ -1,6 +1,6 @@
 # saml20-clj
 
-This is a SAML 2.0 clojure library for SSO. 
+This is a SAML 2.0 clojure library for SSO.
 This library allows a clojure application to act as a service provider (SP).
 Tested with Microsoft Active Directory Federation Server (ADFS) as the identity provider (IdP).
 
@@ -10,8 +10,8 @@ Add ```[kirasystems/saml20-clj "0.1.10"]``` to your project dependencies.
 
 ## Usage
 
-* See [quephird/saml-test](https://github.com/quephird/saml-test) for the usage. 
-* This repository is forked from [vlacs/saml20-clj](https://github.com/vlacs/saml20-clj) and added the support for XML signing with SHA-256 instead of SHA-1, which is required by ADFS by default. 
+* See [quephird/saml-test](https://github.com/quephird/saml-test) for the usage.
+* This repository is forked from [vlacs/saml20-clj](https://github.com/vlacs/saml20-clj) and added the support for XML signing with SHA-256 instead of SHA-1, which is required by ADFS by default.
 
 ``` clojure
 (ns myapp.routes.saml
@@ -19,6 +19,7 @@ Add ```[kirasystems/saml20-clj "0.1.10"]``` to your project dependencies.
             [compojure.core :refer [defroutes routes GET POST]]
             [myapp.config :refer [base-url saml-keystore-password]]
             [ring.util.response :refer :all]
+            [saml20-clj.crypto :as crypto]
             [saml20-clj.sp :as saml-sp]
             [saml20-clj.routes :as saml-routes]
             [saml20-clj.shared :as saml-shared]
@@ -28,20 +29,21 @@ Add ```[kirasystems/saml20-clj "0.1.10"]``` to your project dependencies.
   {:app-name (format "%s/saml/metadata" base-url)
    :base-uri base-url
    :idp-uri "https://adfs.example.com/adfs/ls/"
-   ;; Copy /EntityDescriptor/RoleDescriptor/KeyDescriptor[@use="signing"]/KeyInfo/X509Data/X509Certificate of 
+   ;; Copy /EntityDescriptor/RoleDescriptor/KeyDescriptor[@use="signing"]/KeyInfo/X509Data/X509Certificate of
    ;; https://adfs.example.com/federationMetadata/2007-06/federationMetadata.xml
-   :idp-cert "ABCDEF..." 
+   :idp-cert "ABCDEF..."
    :keystore-file "saml.jks"
    :keystore-password saml-keystore-password
    :key-alias "saml"})
 
 (defn saml-routes
   [{:keys [app-name base-uri idp-uri idp-cert keystore-file keystore-password key-alias]}]
-  (let [decrypter         (saml-sp/make-saml-decrypter keystore-file keystore-password key-alias)
-        sp-cert           (saml-shared/get-certificate-b64 keystore-file keystore-password key-alias)
+  (let [decrypter         (saml-sp/saml-decrypter keystore-file keystore-password key-alias)
+        keystore          (crypto/file->keystore keystore-file keystore-password)
+        sp-cert           (crypto/get-certificate-b64 keystore key-alias)
         ;; Specify :sha256 as XML signing algorithm if you use ADFS as IdP. OpenSAML expects :sha1.
         mutables          (assoc (saml-sp/generate-mutables)
-                                 :xml-signer (saml-sp/make-saml-signer keystore-file keystore-password key-alias
+                                 :xml-signer (saml-sp/saml-signer keystore keystore-password key-alias
                                                                        :algorithm :sha256))
         acs-uri           (str base-uri "/saml")
         saml-req-factory! (saml-sp/create-request-factory mutables

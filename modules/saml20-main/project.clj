@@ -1,16 +1,18 @@
 (defproject pliant/saml20-clj "0.1.0-SNAPSHOT"
   :description "Basic SAML 2.0 library for SSO."
-  :url "https://github.com/kirasystems/saml20-clj"
+  :url "https://github.com/pliant/saml20-clj"
   :license {:name "Eclipse Public License"
             :url "http://www.eclipse.org/legal/epl-v10.html"}
+
   :source-paths ["src"]
-  :dependencies [[clj-time "0.15.2"]
-                 [compojure "1.6.1" :exclusions [ring/ring-core]]
-                 [org.apache.santuario/xmlsec "2.1.4"]
-                 [org.clojure/clojure "1.10.1"]
+
+  :dependencies [[org.clojure/clojure "1.10.1"]
                  [org.clojure/data.codec "0.1.1"]
                  [org.clojure/data.xml "0.0.8"]
                  [org.clojure/data.zip "0.1.3"]
+                 [clj-time "0.15.2"] ; Needed For JodaTime.  OpenSAML used JodaTime
+                 [compojure "1.6.1" :exclusions [ring/ring-core]]
+                 [org.apache.santuario/xmlsec "2.1.4"]
                  [org.opensaml/opensaml "2.6.4"]
                  [org.vlacs/helmsman "1.0.0"]]
 
@@ -19,6 +21,7 @@
              "-Djdk.xml.maxParameterEntitySizeLimit=10000"
              "-Djdk.xml.maxElementDepth=1000"]
 
+  :aot :all
 
   :pedantic :warn
 

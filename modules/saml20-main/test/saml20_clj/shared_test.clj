@@ -19,8 +19,3 @@
 (deftest test-str-to-stream-to-str
   (testing "Testing string to stream and stream to string transformations."
     (is (= (shared/read-to-end (shared/str->inputstream arb-str)) arb-str))))
-
-(deftest test-parse-xml-str
-  (testing "Testing xml parsing from a string."
-   (let [parsed (shared/parse-xml-str arb-xml)]
-     (is (= parsed arb-xml-rep)))))

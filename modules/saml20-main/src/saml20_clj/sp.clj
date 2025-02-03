@@ -1,11 +1,13 @@
 (ns saml20-clj.sp
   (:require [clojure.xml :refer [parse]]
+            [clojure.string :as str]
             [clojure.zip :as zip]
-            [ring.util.response :refer [redirect]]
             [clj-time.core :as ctime]
             [clj-time.coerce :refer [to-timestamp]]
             [hiccup.core :as hiccup]
             [hiccup.page :as page]
+            [saml20-clj.crypto :as crypto]
+            [saml20-clj.saml :as saml]
             [saml20-clj.shared :as shared]
             [saml20-clj.xml :as saml-xml]
             [clojure.data.zip.xml :as zf])
@@ -46,18 +48,19 @@
   "Given a timeout duration, remove all SAML IDs that are older than now minus the timeout."
   [saml-id-timeouts timeout-duration]
   (let [filter-fn
-        (partial filter (shared/make-timeout-filter-fn timeout-duration))]
+        (partial filter (shared/timeout-filter-fn timeout-duration))]
     (dosync
       (ref-set saml-id-timeouts (into {} (filter-fn @saml-id-timeouts))))))
 
 
 (defn metadata
+  "Generates the SP metadata that is requested from the IDP."
   ([app-name acs-uri certificate-str sign-request?]
    (str
      (page/xml-declaration "UTF-8")
      (hiccup/html
        [:md:EntityDescriptor {:xmlns:md  "urn:oasis:names:tc:SAML:2.0:metadata",
-                              :ID  (clojure.string/replace acs-uri #"[:/]" "_") ,
+                              :ID  (str/replace acs-uri #"[:/]" "_") ,
                               :entityID  app-name}
         [:md:SPSSODescriptor
          (cond-> {:AuthnRequestsSigned "true",
@@ -106,10 +109,11 @@
 
 
 (defn generate-mutables
+  ""
   []
   {:saml-id-timeouts (ref {})
    :saml-last-id (atom 0)
-   :secret-key-spec (shared/new-secret-key-spec)})
+   :secret-key-spec (crypto/secret-key-spec)})
 
 
 (defn create-request-factory
@@ -138,17 +142,6 @@
        (if xml-signer
          (xml-signer new-request)
          new-request)))))
-
-
-(defn get-idp-redirect
-  "Return Ring response for HTTP 302 redirect."
-  [idp-url saml-request relay-state]
-  (redirect
-    (str idp-url
-         (if (re-seq #"\?" idp-url) "&" "?")
-         (let [saml-request (shared/str->deflate->base64 saml-request)]
-           (shared/uri-query-str
-             {:SAMLRequest saml-request :RelayState relay-state})))))
 
 
 (defn pull-attrs
@@ -185,7 +178,7 @@
        :response-id (:ID response-attrs)
        :issued-at (:IssueInstant response-attrs)
        ;;; TODO: Validate that "now" is within saml conditions.
-       :success? (and (shared/saml-successful? status-str)
+       :success? (and (saml/status-success? status-str)
                       (= (:InResponseTo response-attrs)
                          (:InResponseTo subject-conf-attrs)))
        :user-format user-type
@@ -201,14 +194,13 @@
     (response->map parsed-zipper)))
 
 
-(defn make-saml-signer
-  [keystore-filename keystore-password key-alias & {:keys [algorithm] :or {algorithm :sha1}}]
-  (when keystore-filename
+(defn saml-signer
+  [^KeyStore keystore ^String keystore-password ^String key-alias & {:keys [algorithm] :or {algorithm :sha1}}]
+  (when keystore
     (Init/init)
     (ElementProxy/setDefaultPrefix Constants/SignatureSpecNS "")
-    (let [ks (shared/load-key-store keystore-filename keystore-password)
-          private-key (.getKey ^KeyStore ks key-alias (.toCharArray keystore-password))
-          cert (.getCertificate ^KeyStore ks key-alias)
+    (let [private-key (.getKey keystore key-alias (.toCharArray keystore-password))
+          cert (.getCertificate keystore key-alias)
           sig-algo (case (.getAlgorithm ^java.security.Key private-key)
                      "DSA" (case algorithm
                              :sha256 XMLSignature/ALGO_ID_SIGNATURE_DSA_SHA256
@@ -237,10 +229,11 @@
           (String. (.canonicalizeSubtree canonicalizer xmldoc) "UTF-8"))))))
 
 
-(defn make-saml-decrypter [keystore-filename keystore-password key-alias]
-  (when keystore-filename
-    (let [ks (shared/load-key-store keystore-filename keystore-password)
-          private-key (.getKey ks key-alias (.toCharArray keystore-password))
+(defn saml-decrypter
+  "SAML decrypter used to decrypt SAML assertions that are sent from the IDP."
+  [^KeyStore keystore ^String password ^String alias]
+  (when keystore
+    (let [private-key (.getKey keystore alias (.toCharArray password))
           decryption-cred (doto (BasicX509Credential.)
                             (.setPrivateKey private-key))
           decrypter (Decrypter. nil
@@ -261,7 +254,7 @@
         name-id (.getNameID subject)
         attributes (mapcat #(.getAttributes %) statements)
         attrs (apply merge
-                     (map (fn [a] {(shared/saml2-attr->name (.getName a)) ;; Or (.getFriendlyName a) ??
+                     (map (fn [a] {(saml/attr->name (.getName a)) ;; Or (.getFriendlyName a) ??
                                    (map #(-> % (.getDOM) (.getTextContent))
                                         (.getAttributeValues a))})
                           attributes))
@@ -284,7 +277,7 @@
   "Checks (if exists) the signature of SAML Response given the IdP certificate"
   [saml-resp idp-cert]
   (if-let [signature (.getSignature saml-resp)]
-    (let [idp-pubkey (-> idp-cert shared/certificate-x509 shared/jcert->public-key)
+    (let [idp-pubkey (-> idp-cert crypto/certificate-x509 crypto/jcert->public-key)
           public-creds (doto (BasicX509Credential.)
                          (.setPublicKey idp-pubkey))
           validator (SignatureValidator. public-creds)]
@@ -327,8 +320,8 @@
   [saml-resp decrypter]
   (let [assertions (concat (.getAssertions saml-resp)
                            (when decrypter
-                            (map #(.decrypt decrypter %)
-                                (.getEncryptedAssertions saml-resp))))
+                             (map #(.decrypt decrypter %)
+                                 (.getEncryptedAssertions saml-resp))))
         props (map parse-saml-assertion assertions)]
     (assoc (parse-saml-resp-status saml-resp)
            :assertions props)))
